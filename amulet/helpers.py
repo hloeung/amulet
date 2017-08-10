@@ -45,8 +45,9 @@ def setup_bzr(charm_dir):
     run_bzr(['config', 'add.maximum_file_size=0'], charm_dir)
 
 
-def run_bzr(args, working_dir, env=None):
+def run_bzr(args, working_dir, env=None, timeout=300):
     """Run a Bazaar command in a subprocess"""
+    timeout = int(os.environ.get('AMULET_WAIT_TIMEOUT') or timeout)
     try:
         p = subprocess.Popen(["bzr"] + args, cwd=working_dir, env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -54,14 +55,20 @@ def run_bzr(args, working_dir, env=None):
         if e.errno != errno.ENOENT:
             raise
         raise OSError("bzr not found, do you have Bazaar installed?")
-    out, err = p.communicate()
-    if p.returncode:
+    try:
+        out, err = p.communicate(timeout=timeout)
+        returncode = p.returncode
+    except subprocess.TimeoutExpired:
+        p.kill()
+        out, err = p.communicate()
+    if returncode:
         raise IOError("bzr command failed {!r}:\n"
                       "{}".format(args, _as_text(err)))
     return _as_text(out)
 
 
-def juju(args, env=None, include_model=True):
+def juju(args, env=None, include_model=True, timeout=300):
+    timeout = int(os.environ.get('AMULET_WAIT_TIMEOUT') or timeout)
     if include_model:
         if env is None:
             env = os.environ
@@ -73,8 +80,13 @@ def juju(args, env=None, include_model=True):
         if e.errno != errno.ENOENT:
             raise
         raise OSError("juju not found, do you have Juju installed?")
-    out, err = p.communicate()
-    if p.returncode:
+    try:
+        out, err = p.communicate(timeout=timeout)
+        returncode = p.returncode
+    except subprocess.TimeoutExpired:
+        p.kill()
+        out, err = p.communicate()
+    if returncode:
         raise IOError("juju command failed {!r}:\n"
                       "{}".format(args, _as_text(err)))
     return _as_text(out) if out else None

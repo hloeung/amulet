@@ -229,6 +229,7 @@ class UnitSentry(Sentry):
             code of the command.
 
         """
+        timeout = int(os.environ.get('AMULET_WAIT_TIMEOUT') or timeout)
         unit = unit or self.info['unit_name']
         cmd = [
             'juju', 'run',
@@ -241,11 +242,16 @@ class UnitSentry(Sentry):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        stdout, stderr = p.communicate()
-        output = stdout if p.returncode == 0 else stderr
-        return output.decode('utf8'), p.returncode
+        try:
+            stdout, stderr = p.communicate(timeout=timeout)
+            returncode = p.returncode
+        except subprocess.TimeoutExpired:
+            p.kill()
+            stdout, stderr = p.communicate()
+        output = stdout if returncode == 0 else stderr
+        return output.decode('utf8'), returncode
 
-    def ssh(self, command, unit=None, raise_on_failure=False, model=None):
+    def ssh(self, command, unit=None, raise_on_failure=False, model=None, timeout=300):
         """Run an arbitrary command (as the ubuntu user) against a remote
         unit, using `juju ssh`.
 
@@ -263,6 +269,7 @@ class UnitSentry(Sentry):
             code of the command.
 
         """
+        timeout = int(os.environ.get('AMULET_WAIT_TIMEOUT') or timeout)
         unit = unit or self.info['unit_name']
         if model is None:
             model = helpers.default_environment()
@@ -273,13 +280,18 @@ class UnitSentry(Sentry):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        stdout, stderr = p.communicate()
+        try:
+            stdout, stderr = p.communicate(timeout=timeout)
+            returncode = p.returncode
+        except subprocess.TimeoutExpired:
+            p.kill()
+            stdout, stderr = p.communicate()
         output = stdout if p.returncode == 0 else stderr
-        if p.returncode != 0:
+        if returncode != 0:
             print(output)
             if raise_on_failure:
-                raise subprocess.CalledProcessError(p.returncode, cmd, output)
-        return output.decode('utf8').strip(), p.returncode
+                raise subprocess.CalledProcessError(returncode, cmd, output)
+        return output.decode('utf8').strip(), returncode
 
     def _run_unit_script(self, cmd, working_dir=None):
         if working_dir is None:
